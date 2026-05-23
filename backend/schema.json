@@ -1,0 +1,54 @@
+{
+  "timestamp": "2026-05-14T11:07:00Z",
+  "classroom_id": "B-204",
+
+  "sensor_data": {
+    "occupancy_u": 1,
+    "temperature_indoor": 22.5,
+    "temperature_outdoor": 31.0,
+    "light_natural_lux_E": 150.0,
+    "co2_ppm": 850
+  },
+
+  "device_status": {
+    "ac": {
+      "setpoint_temp_Tset": 23.0,
+      "power_w_Pj": 1200.0
+    },
+    "lights": [
+      {
+        "id": "L1",
+        "power_level_x": 0.8,
+        "nominal_power_w_P": 40.0,
+        "efficiency_k_lux": 250.0
+      },
+      {
+        "id": "L2",
+        "power_level_x": 0.6,
+        "nominal_power_w_P": 40.0,
+        "efficiency_k_lux": 250.0
+      }
+    ]
+  },
+
+  "calculated_metrics": {
+    "total_light_lux": 500.0,
+    "total_energy_w": 1256.0
+  },
+
+  "constraint_status": {
+    "lighting_ok": true,
+    "thermal_ok": true,
+    "co2_ok": true,
+    "capacity_ok": true
+  },
+
+  "optimization_results": {
+    "scenario_id": "deney_2",
+    "energy_coeff_xi1": 0.90,
+    "light_coeff_xi2": 0.85,
+    "temp_coeff_xi3": 0.80,
+    "grd_score_G": 0.85,
+    "is_optimal": true
+  }
+}

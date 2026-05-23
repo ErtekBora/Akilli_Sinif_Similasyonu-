@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Akıllı Sınıf — Enerji Yönetim Paneli</title>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow:wght@300;400;600;700&family=Barlow+Condensed:wght@500;700&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    .cls-tabs { display: flex; gap: 8px; }
+    .cls-tab {
+      padding: 6px 18px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      background: transparent;
+      color: var(--text-dim);
+      transition: all 0.2s;
+    }
+    .cls-tab:hover { border-color: var(--accent); color: var(--accent); }
+    .cls-tab.active {
+      border-color: var(--accent);
+      background: rgba(0,229,160,0.1);
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── HEADER ─────────────────────────────────────────────────────── -->
+  <header class="header">
+    <div class="header-left">
+      <div class="logo-mark">SC</div>
+      <div>
+        <div class="header-title">Akıllı Sınıf Otomasyon Sistemi</div>
+        <div class="header-sub">Enerji Verimliliği &amp; Analiz Paneli</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <!-- SINIF SEÇİCİ TABLAR -->
+      <div class="cls-tabs">
+        <button class="cls-tab active" onclick="switchClassroom('B-201')" id="tab-B-201">B-201</button>
+        <button class="cls-tab"        onclick="switchClassroom('B-202')" id="tab-B-202">B-202</button>
+        <button class="cls-tab"        onclick="switchClassroom('B-203')" id="tab-B-203">B-203</button>
+      </div>
+      <div class="live-indicator">
+        <span class="pulse-dot" id="pulseDot"></span>
+        <span id="liveLabel">BAĞLANIYOR</span>
+      </div>
+      <div class="last-update">Son güncelleme: <span id="lastUpdate">—</span></div>
+    </div>
+  </header>
+
+  <!-- ── SCHEDULE TIMELINE (GANTT) ────────────────────────────────── -->
+  <section class="section" style="margin-top:24px;">
+    <div class="section-header">
+      <span class="section-label">GÜNLÜK DERS PROGRAMI — 08:00–17:00</span>
+      <span class="section-line"></span>
+    </div>
+    <div class="timeline-grid" id="scheduleTimeline"></div>
+    <div class="timeline-axis" id="timelineAxis"></div>
+  </section>
+
+  <!-- ── KPI CARDS ──────────────────────────────────────────────────── -->
+  <section class="kpi-grid">
+    <div class="kpi-card" id="card-energy">
+      <div class="kpi-label">Anlık Güç Tüketimi</div>
+      <div class="kpi-value"><span id="kpiEnergy">—</span><span class="kpi-unit">W</span></div>
+      <div class="kpi-sub">Ort: <span id="kpiEnergyAvg">—</span> W</div>
+    </div>
+    <div class="kpi-card" id="card-temp">
+      <div class="kpi-label">İç Sıcaklık</div>
+      <div class="kpi-value"><span id="kpiTemp">—</span><span class="kpi-unit">°C</span></div>
+      <div class="kpi-sub">Hedef: 20–24 °C</div>
+    </div>
+    <div class="kpi-card" id="card-lux">
+      <div class="kpi-label">Işık Seviyesi</div>
+      <div class="kpi-value"><span id="kpiLux">—</span><span class="kpi-unit">lx</span></div>
+      <div class="kpi-sub">Min. eşik: 500 lx</div>
+    </div>
+    <div class="kpi-card" id="card-co2">
+      <div class="kpi-label">CO₂ Seviyesi</div>
+      <div class="kpi-value"><span id="kpiCo2">—</span><span class="kpi-unit">ppm</span></div>
+      <div class="kpi-sub">Limit: 1000 ppm</div>
+    </div>
+    <div class="kpi-card" id="card-occupancy">
+      <div class="kpi-label">Sınıf Durumu</div>
+      <div class="kpi-value occupancy-value" id="kpiOccupancy">—</div>
+      <div class="kpi-sub">Doluluk sensörü</div>
+    </div>
+    <div class="kpi-card" id="card-grd">
+      <div class="kpi-label">En İyi GRD Skoru</div>
+      <div class="kpi-value"><span id="kpiGrd">—</span></div>
+      <div class="kpi-sub">Senaryo: <span id="kpiScenario">—</span></div>
+    </div>
+  </section>
+
+  <!-- ── CONSTRAINT STATUS ──────────────────────────────────────────── -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-label">KISIT DURUMU</span>
+      <span class="section-line"></span>
+    </div>
+    <div class="constraint-grid">
+      <div class="constraint-item" id="c-lighting">
+        <div class="constraint-icon">◈</div>
+        <div class="constraint-name">Aydınlatma Konforu</div>
+        <div class="constraint-formula">Σ(x·k) + E<sub>nat</sub> ≥ 500·u<sub>t</sub></div>
+        <div class="constraint-badge" id="b-lighting">—</div>
+      </div>
+      <div class="constraint-item" id="c-thermal">
+        <div class="constraint-icon">◈</div>
+        <div class="constraint-name">Isıl Konfor</div>
+        <div class="constraint-formula">20°C ≤ T<sub>iç</sub> ≤ 24°C</div>
+        <div class="constraint-badge" id="b-thermal">—</div>
+      </div>
+      <div class="constraint-item" id="c-co2">
+        <div class="constraint-icon">◈</div>
+        <div class="constraint-name">Hava Kalitesi</div>
+        <div class="constraint-formula">CO₂ ≤ 1000 ppm</div>
+        <div class="constraint-badge" id="b-co2">—</div>
+      </div>
+      <div class="constraint-item" id="c-capacity">
+        <div class="constraint-icon">◈</div>
+        <div class="constraint-name">Cihaz Kapasitesi</div>
+        <div class="constraint-formula">0 ≤ x<sub>i,t</sub> ≤ 1</div>
+        <div class="constraint-badge" id="b-capacity">—</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CHARTS ─────────────────────────────────────────────────────── -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-label">ZAMAN SERİSİ — <span id="activeClsLabel">B-201</span></span>
+      <span class="section-line"></span>
+    </div>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-title">Enerji Tüketimi (W)</div>
+        <canvas id="chartEnergy"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Işık Seviyesi (lx) — eşik: 500 lx</div>
+        <canvas id="chartLux"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">İç Sıcaklık (°C) — konfor: 20–24°C</div>
+        <canvas id="chartTemp"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">CO₂ Seviyesi (ppm) — limit: 1000</div>
+        <canvas id="chartCo2"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── LAMBA DURUMU ────────────────────────────────────────────────── -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-label">LAMBA DURUMU</span>
+      <span class="section-line"></span>
+    </div>
+    <div id="lightsGrid" class="lights-grid">
+      <div class="no-data">Veri bekleniyor…</div>
+    </div>
+  </section>
+
+  <!-- ── GRA OPTIMIZASYON TABLOSU + RADAR CHART ────────────────────── -->
+  <section class="section">
+    <div class="section-header">
+      <span class="section-label">TAGUCHİ / GRİ İLİŞKİSEL ANALİZ — DENEY SONUÇLARI</span>
+      <span class="section-line"></span>
+    </div>
+    <div class="gra-layout">
+      <!-- Radar chart -->
+      <div class="radar-card">
+        <div class="radar-title">Optimum Senaryo Dengesi</div>
+        <canvas id="radarChart"></canvas>
+      </div>
+      <!-- Existing table -->
+      <div class="table-wrapper">
+        <table class="gra-table">
+          <thead>
+            <tr>
+              <th>Senaryo</th>
+              <th>ξ₁ Enerji</th>
+              <th>ξ₂ Işık</th>
+              <th>ξ₃ Sıcaklık</th>
+              <th>GRD (G<sub>i</sub>)</th>
+              <th>Durum</th>
+            </tr>
+          </thead>
+          <tbody id="graBody">
+            <tr><td colspan="6" class="no-data">Optimizasyon verisi bekleniyor…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    Enerji Verimliliği için Akıllı Sınıf Otomasyon ve Analiz Sistemi &nbsp;·&nbsp;
+    Backend: <code>localhost:8000</code> &nbsp;·&nbsp;
+    Güncelleme aralığı: 5 sn
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

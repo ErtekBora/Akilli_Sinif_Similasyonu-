@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Digital Twin — Akıllı Sınıf Enerji Sistemi</title>
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            surface: '#060a0f',
+            card:    '#0b1320',
+            border:  '#18293a',
+            smart:   '#00ff88',
+            trad:    '#ff5e3a',
+            info:    '#38b4ff',
+            warn:    '#ffb300',
+            danger:  '#ff3d5a',
+          },
+          fontFamily: {
+            mono: ['"JetBrains Mono"', 'monospace'],
+            ui:   ['"Outfit"', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Fonts & Chart.js -->
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@300;400;600;700;900&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+  <style>
+    :root {
+      --smart:  #00ff88;
+      --trad:   #ff5e3a;
+      --border: #18293a;
+      --card:   #0b1320;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #060a0f;
+      background-image:
+        linear-gradient(rgba(24,41,58,0.35) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(24,41,58,0.35) 1px, transparent 1px);
+      background-size: 32px 32px;
+      font-family: 'Outfit', sans-serif;
+      color: #c8d8e8;
+    }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: #060a0f; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── TIME SLIDER ── */
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%; height: 4px;
+      background: var(--border); border-radius: 2px; outline: none; cursor: pointer;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: var(--smart); cursor: pointer;
+      box-shadow: 0 0 10px rgba(0,255,136,0.6);
+    }
+
+    /* ── CLASSROOM CARD ── */
+    .cls-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      transition: box-shadow 0.4s;
+    }
+    .cls-card.violation {
+      animation: vio-pulse 2s ease-in-out infinite;
+    }
+    @keyframes vio-pulse {
+      0%,100% { box-shadow: 0 0 0 1px rgba(255,61,90,0.25); }
+      50%      { box-shadow: 0 0 22px rgba(255,61,90,0.2), 0 0 0 1px rgba(255,61,90,0.55); }
+    }
+
+    /* ── SENSORS ── */
+    .sval {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.35rem; font-weight: 700; line-height: 1;
+      transition: color 0.3s;
+    }
+
+    /* ── CONSTRAINT BADGES ── */
+    .cbadge {
+      display: flex; align-items: center; gap: 5px;
+      padding: 4px 9px; border-radius: 3px; border: 1px solid;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.8px;
+      transition: all 0.3s;
+    }
+    .cbadge.ok  { color: var(--smart); border-color: rgba(0,255,136,0.3);  background: rgba(0,255,136,0.05); }
+    .cbadge.bad { color: #ff3d5a;      border-color: rgba(255,61,90,0.4);  background: rgba(255,61,90,0.08);
+                  animation: cbad 1.2s ease infinite; }
+    @keyframes cbad { 0%,100%{opacity:1} 50%{opacity:0.55} }
+
+    /* ── SCHEDULE BAR ── */
+    .sbar { position: relative; height: 4px; background: var(--border); border-radius: 2px; overflow: visible; }
+    .sbar-seg { position: absolute; height: 100%; background: rgba(56,180,255,0.45); border-radius: 2px; }
+    .sbar-now { position: absolute; top: -4px; bottom: -4px; width: 2px; background: #fff; border-radius: 1px; transition: left 0.4s; }
+
+    /* ── POWER BARS ── */
+    .pbar { height: 5px; border-radius: 3px; transition: width 0.5s ease; }
+
+    /* ── GRA TABLE ── */
+    .gra-tbl td, .gra-tbl th {
+      padding: 5px 8px;
+      font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    }
+    .gra-tbl .opt-row td { color: var(--smart); }
+
+    /* ── OCC BADGE ── */
+    .occ {
+      font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 700;
+      letter-spacing: 2px; padding: 3px 9px; border-radius: 3px; border: 1px solid;
+      transition: all 0.3s;
+    }
+    .occ.dolu { color: var(--smart); border-color: rgba(0,255,136,0.4); background: rgba(0,255,136,0.08); }
+    .occ.bos  { color: #2a4560;     border-color: var(--border);        background: transparent; }
+
+    /* ── ALERT BANNER ── */
+    #alert-bar { max-height: 0; overflow: hidden; transition: max-height 0.4s ease; }
+    #alert-bar.on { max-height: 70px; }
+
+    /* ── SPEED BUTTONS ── */
+    .spd { padding: 4px 10px; border: 1px solid var(--border); border-radius: 3px;
+           font-family: 'JetBrains Mono', monospace; font-size: 11px; cursor: pointer;
+           background: transparent; color: #3a5570; transition: all 0.2s; }
+    .spd.active { border-color: rgba(0,255,136,0.5); color: var(--smart); background: rgba(0,255,136,0.07); }
+
+    /* ── PLAY BUTTON ── */
+    .play-btn {
+      width: 38px; height: 38px; border: 1px solid rgba(0,255,136,0.4);
+      background: rgba(0,255,136,0.07); color: var(--smart);
+      border-radius: 4px; cursor: pointer; font-size: 15px;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s;
+    }
+    .play-btn:hover { background: rgba(0,255,136,0.15); }
+
+    /* ── SECTION HEADER ── */
+    .sec-hd { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+    .sec-lbl { font-size: 9px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase;
+               color: #1e3550; white-space: nowrap; }
+    .sec-ln { flex: 1; height: 1px; background: var(--border); }
+
+    /* ── SAVINGS NUM ── */
+    .savnum { font-family: 'JetBrains Mono', monospace; font-size: 2.6rem; font-weight: 700;
+              color: var(--smart); line-height: 1; transition: color 0.4s; }
+
+    /* ── MANUAL OVERRIDE ── */
+    .cls-card.override {
+      animation: ovr-pulse 1.8s ease-in-out infinite;
+    }
+    @keyframes ovr-pulse {
+      0%,100% { box-shadow: 0 0 0 1px rgba(255,174,0,0.35); border-color: rgba(255,174,0,0.45); }
+      50%      { box-shadow: 0 0 26px rgba(255,174,0,0.18), 0 0 0 1px rgba(255,174,0,0.65); }
+    }
+
+    .ovr-banner {
+      display: none; align-items: center; gap: 8px;
+      padding: 6px 16px;
+      background: rgba(255,174,0,0.07);
+      border-bottom: 1px solid rgba(255,174,0,0.2);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px; font-weight: 700; letter-spacing: 1.5px;
+      color: #ffb300; text-transform: uppercase;
+    }
+    .ovr-banner.show { display: flex; }
+
+    .ovr-panel {
+      display: none; flex-direction: column; gap: 12px;
+      padding: 12px 16px;
+      background: rgba(255,174,0,0.04);
+      border-top: 1px solid rgba(255,174,0,0.15);
+    }
+    .ovr-panel.active { display: flex; }
+
+    .ovr-btn {
+      padding: 4px 10px; border-radius: 3px; border: 1px solid;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px; font-weight: 700; letter-spacing: 0.8px;
+      cursor: pointer; transition: all 0.2s; background: transparent;
+    }
+    .ovr-btn.off { border-color: rgba(255,174,0,0.45); color: #ffb300; }
+    .ovr-btn.off:hover { background: rgba(255,174,0,0.12); }
+    .ovr-btn.on  { border-color: rgba(255,61,90,0.5); color: #ff3d5a; background: rgba(255,61,90,0.08); }
+
+    input.ovr-range {
+      -webkit-appearance: none; width: 100%; height: 3px;
+      background: rgba(255,174,0,0.2); border-radius: 2px;
+      outline: none; cursor: pointer;
+    }
+    input.ovr-range::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%;
+      background: #ffb300; cursor: pointer;
+      box-shadow: 0 0 8px rgba(255,174,0,0.55);
+    }
+
+    /* GRA row states */
+    .gra-tbl .ovr-row td { color: #ff3d5a !important; font-weight: 700; }
+    .gra-tbl .ovr-dim td { color: #1e3550; }
+  </style>
+</head>
+
+<body class="min-h-screen">
+
+<!-- ═══ ALERT BANNER ════════════════════════════════════════════════════ -->
+<div id="alert-bar" class="sticky top-0 z-50 bg-red-950/90 border-b border-red-800/40 backdrop-blur">
+  <div class="px-6 py-2.5 flex items-center gap-3">
+    <span class="text-red-500 text-lg shrink-0">⚠</span>
+    <span id="alert-text" class="font-mono text-xs text-red-400 leading-relaxed"></span>
+  </div>
+</div>
+
+<!-- ═══ HEADER ══════════════════════════════════════════════════════════ -->
+<header class="sticky top-0 z-40 bg-card/95 backdrop-blur border-b border-border">
+  <div class="px-6 py-3 flex items-center gap-6">
+
+    <!-- LOGO + TITLE -->
+    <div class="flex items-center gap-4 shrink-0">
+      <div class="border border-smart/40 w-9 h-9 flex items-center justify-center
+                  font-mono text-xs font-bold text-smart tracking-widest">DT</div>
+      <div>
+        <div class="font-ui font-bold text-sm tracking-[0.2em] uppercase text-white">Digital Twin</div>
+        <div class="text-xs text-slate-600 tracking-wide">Akıllı Sınıf Enerji Sistemi</div>
+      </div>
+    </div>
+
+    <!-- TIME DISPLAY + PLAY -->
+    <div class="flex items-center gap-4">
+      <button class="play-btn" id="playBtn" onclick="togglePlay()">▶</button>
+      <div>
+        <div class="font-mono text-2xl font-bold text-white leading-none" id="timDisp">08:00</div>
+        <div class="font-mono text-xs text-slate-600">simülasyon saati</div>
+      </div>
+    </div>
+
+    <!-- SLIDER -->
+    <div class="flex-1">
+      <input type="range" id="timeSlider" min="0" max="36" value="0"
+             oninput="onSlider(this.value)"/>
+      <div class="flex justify-between font-mono text-xs text-slate-700 mt-1">
+        <span>08:00</span><span>10:00</span><span>12:00</span>
+        <span>14:00</span><span>16:00</span><span>17:00</span>
+      </div>
+    </div>
+
+    <!-- SPEED -->
+    <div class="flex gap-1 shrink-0">
+      <button class="spd active" data-speed="1" onclick="setSpeed(1)">1×</button>
+      <button class="spd"        data-speed="2" onclick="setSpeed(2)">2×</button>
+      <button class="spd"        data-speed="4" onclick="setSpeed(4)">4×</button>
+    </div>
+
+    <!-- LEGEND -->
+    <div class="flex gap-4 shrink-0 font-mono text-xs">
+      <span class="flex items-center gap-2">
+        <span class="w-4 h-0.5 bg-smart inline-block rounded"></span>
+        <span class="text-slate-400">Akıllı</span>
+      </span>
+      <span class="flex items-center gap-2">
+        <span class="w-4 h-0.5 bg-trad inline-block rounded"></span>
+        <span class="text-slate-400">Geleneksel</span>
+      </span>
+      <span class="flex items-center gap-2">
+        <span class="w-3 h-3 rounded-sm inline-block" style="background:#ffb300;opacity:0.8"></span>
+        <span class="text-slate-400">Manuel</span>
+      </span>
+    </div>
+
+  </div>
+</header>
+
+<!-- ═══ MAIN CONTENT ═════════════════════════════════════════════════════ -->
+<main class="px-6 py-5 space-y-6">
+
+  <!-- ── 3 CLASSROOM CARDS ──────────────────────────────────────────── -->
+  <section>
+    <div class="sec-hd">
+      <span class="sec-lbl">Sınıf Monitörleri — Anlık Durum</span>
+      <div class="sec-ln"></div>
+    </div>
+    <div class="grid grid-cols-3 gap-4" id="clsGrid"></div>
+  </section>
+
+  <!-- ── MAIN COMPARISON CHART ──────────────────────────────────────── -->
+  <section>
+    <div class="sec-hd">
+      <span class="sec-lbl">Günlük Enerji Karşılaştırması — 3 Sınıf Toplamı (W)</span>
+      <div class="sec-ln"></div>
+    </div>
+    <div class="cls-card p-5">
+      <canvas id="mainChart" height="100"></canvas>
+    </div>
+  </section>
+
+  <!-- ── SAVINGS ROW ────────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-hd">
+      <span class="sec-lbl">Anlık Performans Özeti</span>
+      <div class="sec-ln"></div>
+    </div>
+    <div class="grid grid-cols-4 gap-4">
+      <div class="cls-card p-5">
+        <div class="font-mono text-xs text-slate-600 uppercase tracking-widest mb-3">Enerji Tasarrufu</div>
+        <div class="savnum" id="ov-pct">—</div>
+        <div class="text-xs text-slate-600 mt-2">% azaltım (anlık)</div>
+      </div>
+      <div class="cls-card p-5">
+        <div class="font-mono text-xs text-slate-600 uppercase tracking-widest mb-3">Akıllı Sistem</div>
+        <div class="font-mono text-3xl font-bold text-smart leading-none" id="ov-smart">—</div>
+        <div class="text-xs text-slate-600 mt-2">W toplam güç</div>
+      </div>
+      <div class="cls-card p-5">
+        <div class="font-mono text-xs text-slate-600 uppercase tracking-widest mb-3">Geleneksel Sistem</div>
+        <div class="font-mono text-3xl font-bold text-trad leading-none" id="ov-trad">—</div>
+        <div class="text-xs text-slate-600 mt-2">W toplam güç</div>
+      </div>
+      <div class="cls-card p-5">
+        <div class="font-mono text-xs text-slate-600 uppercase tracking-widest mb-3">Aktif İhlaller</div>
+        <div class="font-mono text-3xl font-bold text-danger leading-none" id="ov-viol">—</div>
+        <div class="text-xs text-slate-600 mt-2">geleneksel sistemde</div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="px-6 py-4 border-t border-border mt-4">
+  <div class="text-center font-mono text-xs text-slate-800">
+    Enerji Verimliliği için Akıllı Sınıf Otomasyon ve Analiz Sistemi — Digital Twin Simülasyonu
+    &nbsp;·&nbsp; B-201 / B-202 / B-203
+  </div>
+</footer>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════
+     SIMULATION ENGINE + UI LOGIC
+════════════════════════════════════════════════════════════════════ -->
+<script>
+/* ──────────────────────────────────────────────
+   SABİTLER & PROGRAM
+────────────────────────────────────────────── */
+const ROOMS = ['B-201', 'B-202', 'B-203'];
+
+// Ders programları: [başlangıç_saat, bitiş_saat]
+const SCHED = {
+  'B-201': [[8,10],[11,13],[14,16]],
+  'B-202': [[9,11],[13,15]],
+  'B-203': [[8,9],[10,12],[15,17]]
+};
+
+const P_LAMP   = 40;    // W/lamba
+const N_LAMPS  = 2;     // lamba sayısı/sınıf
+const K_LUX    = 250;   // lüks/birim (lamba verimi katsayısı k_i)
+const LUX_MIN  = 500;   // minimum aydınlatma kısıtı
+const CO2_MAX  = 1000;  // ppm kısıtı
+const T_MIN    = 20;    // Isıl konfor alt sınırı
+const T_MAX    = 24;    // Isıl konfor üst sınırı
+
+/* ──────────────────────────────────────────────
+   FİZİK MODELLERİ
+────────────────────────────────────────────── */
+
+// Doğal ışık (lüks) — İstanbul yaz günü, öğleden sonra tepe ~650 lx
+function E_nat(t) {
+  return Math.max(0, 650 * Math.sin(Math.PI * (t - 6) / 14));
+}
+
+// Dış ortam sıcaklığı — min 18°C @06:00, maks 34°C @14:00
+function T_out(t) {
+  return 18 + 16 * Math.sin(Math.PI * (t - 5) / 14);
+}
+
+// Sınıf dolu mu?
+function occupied(room, t) {
+  return SCHED[room].some(([s, e]) => t >= s && t < e);
+}
+
+// Mevcut seanstaki geçen süre (CO₂ için)
+function seansInfo(room, t) {
+  for (const [s, e] of SCHED[room]) {
+    if (t >= s && t < e) return { iceride: true, tIcin: (t - s) * 60, tDisari: 0 };
+  }
+  let sonBitis = null;
+  for (const [s, e] of SCHED[room]) {
+    if (e <= t && (sonBitis === null || e > sonBitis)) sonBitis = e;
+  }
+  return { iceride: false, tIcin: 0, tDisari: sonBitis !== null ? (t - sonBitis) * 60 : Infinity };
+}
+
+/* ── AKILLI SİSTEM ──────────────────────────── */
+function smart(room, t) {
+  const u    = occupied(room, t);
+  const Enat = E_nat(t);
+  const Tout = T_out(t);
+  const si   = seansInfo(room, t);
+
+  // Aydınlatma: x_i,t ∈ [0,1] — doğal ışığa göre adapt
+  // Formül: x = max(0, min(1, (500 - E_nat) / (k_i * N)))
+  const x     = !u ? 0 : Math.max(0, Math.min(1, (LUX_MIN - Enat) / (K_LUX * N_LAMPS)));
+  const P_lmp = x * P_LAMP * N_LAMPS;
+  const lux   = Enat + x * K_LUX * N_LAMPS;   // toplam lüks
+
+  // Klima: değişken hızlı inverter — Tout'a göre dinamik
+  const P_ac = u ? Math.min(900, 300 + 50 * Math.abs(Tout - 22)) : 0;
+
+  // CO₂: akıllı havalandırma → yavaş artış (max ~670 ppm)
+  let co2;
+  if (si.iceride)      co2 = 400 + 3.0 * Math.min(si.tIcin, 90);
+  else if (si.tDisari < Infinity) co2 = 400 + Math.max(0, 270 * Math.exp(-si.tDisari / 20));
+  else                 co2 = 410;
+
+  // İç sıcaklık: inverter sıkı kontrol ±0.4°C
+  const Tic = u ? 22 + (Tout - 22) * 0.03 : 15 + Tout * 0.35;
+
+  return { u, x, Enat, Tout, P_lmp, P_ac, total: P_lmp + P_ac, lux, co2, Tic };
+}
+
+/* ── GELENEKSEL SİSTEM ──────────────────────── */
+function trad(room, t) {
+  const u    = occupied(room, t);
+  const Enat = E_nat(t);
+  const Tout = T_out(t);
+  const si   = seansInfo(room, t);
+
+  // Aydınlatma: x = u — her zaman %100 (doğal ışık hesaba katılmaz)
+  const x     = u ? 1 : 0;
+  const P_lmp = x * P_LAMP * N_LAMPS;
+  const lux   = Enat + x * K_LUX * N_LAMPS;
+
+  // Klima: sabit 1200W (dış sıcaklıktan bağımsız)
+  const P_ac = u ? 1200 : 0;
+
+  // CO₂: havalandırma yok → hızlı artış, 2 saatte ~1060 ppm (İHLAL!)
+  let co2;
+  if (si.iceride)      co2 = 400 + 5.5 * Math.min(si.tIcin, 120);
+  else if (si.tDisari < Infinity) co2 = 400 + Math.max(0, 660 * Math.exp(-si.tDisari / 25));
+  else                 co2 = 410;
+
+  // İç sıcaklık: tek hızlı kompresör → cold-start salınımı
+  let Tic;
+  if (u) Tic = 22 + 3 * Math.exp(-si.tIcin / 25) * Math.cos(Math.PI * si.tIcin / 25);
+  else   Tic = Tout;   // boşken düzenleme yok
+
+  return { u, x, Enat, Tout, P_lmp, P_ac, total: P_lmp + P_ac, lux, co2, Tic };
+}
+
+/* ── GRİ İLİŞKİSEL ANALİZ ──────────────────── */
+function graAnalysis(room, t) {
+  const s = smart(room, t);
+  const r = trad(room, t);
+
+  // Kriter 1 (ξ₁): Enerji tasarrufu — yüksek = iyi
+  const xi1_B = r.total > 0 ? Math.max(0, 1 - s.total / r.total) : 0;
+  // Kriter 2 (ξ₂): Işık konforu — 500 lüks hedefe yakınlık
+  const xi2_B = s.u ? Math.min(1, s.lux / LUX_MIN) : 1;
+  // Kriter 3 (ξ₃): Isıl konfor — 22°C hedefe yakınlık (±4°C bant)
+  const xi3_B = Math.max(0, 1 - Math.abs(s.Tic - 22) / 4);
+
+  // Senaryo A: Enerji odaklı (ışığı daha çok kısar, konfor biraz feda)
+  const xi1_A = Math.min(1, xi1_B * 1.22), xi2_A = Math.max(0, xi2_B * 0.80), xi3_A = Math.max(0, xi3_B * 0.86);
+  // Senaryo C: Konfor odaklı (daha fazla enerji, yüksek konfor)
+  const xi1_C = Math.max(0, xi1_B * 0.62), xi2_C = Math.min(1, xi2_B * 1.04), xi3_C = Math.min(1, xi3_B * 1.05);
+
+  return [
+    { lbl:'Senaryo A (Enerji Odaklı)', xi1:xi1_A, xi2:xi2_A, xi3:xi3_A, G:(xi1_A+xi2_A+xi3_A)/3, opt:false },
+    { lbl:'Senaryo B (Dengeli — Bizim)', xi1:xi1_B, xi2:xi2_B, xi3:xi3_B, G:(xi1_B+xi2_B+xi3_B)/3, opt:true  },
+    { lbl:'Senaryo C (Konfor Odaklı)', xi1:xi1_C, xi2:xi2_C, xi3:xi3_C, G:(xi1_C+xi2_C+xi3_C)/3, opt:false },
+  ];
+}
+
+/* ──────────────────────────────────────────────
+   VERİ ÖN HESAPLAMA — Tüm gün (15 dk adım)
+────────────────────────────────────────────── */
+const STEPS = 37;  // 08:00–17:00 arası, her 15 dk = 37 nokta
+const tlbls = Array.from({length: STEPS}, (_, i) => {
+  const t = 8 + i * 0.25, h = Math.floor(t), m = Math.round((t-h)*60);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+});
+
+const preS = {}, preT = {};   // preS[room][step], preT[room][step]
+ROOMS.forEach(room => {
+  preS[room] = []; preT[room] = [];
+  for (let i = 0; i < STEPS; i++) {
+    const t = 8 + i * 0.25;
+    preS[room].push(smart(room, t));
+    preT[room].push(trad(room, t));
+  }
+});
+
+// Toplam enerji (3 sınıf) — ana grafik için
+const totSmart = Array.from({length:STEPS}, (_,i) => ROOMS.reduce((s,r) => s + preS[r][i].total, 0));
+const totTrad  = Array.from({length:STEPS}, (_,i) => ROOMS.reduce((s,r) => s + preT[r][i].total, 0));
+
+/* ──────────────────────────────────────────────
+   CHART.JS KURULUMU
+────────────────────────────────────────────── */
+Chart.defaults.color = '#2a4060';
+Chart.defaults.borderColor = '#18293a';
+Chart.defaults.font.family = '"JetBrains Mono", monospace';
+Chart.defaults.font.size = 10;
+
+let chartCursorStep = 0;
+
+const mainChart = new Chart(document.getElementById('mainChart'), {
+  type: 'line',
+  data: {
+    labels: tlbls,
+    datasets: [
+      {
+        label: 'Akıllı Sistem (W)',
+        data: totSmart,
+        borderColor: '#00ff88', backgroundColor: 'rgba(0,255,136,0.06)',
+        borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 5,
+      },
+      {
+        label: 'Geleneksel (W)',
+        data: totTrad,
+        borderColor: '#ff5e3a', backgroundColor: 'rgba(255,94,58,0.05)',
+        borderWidth: 2, fill: true, tension: 0.4, pointRadius: 0, pointHoverRadius: 5,
+      },
+      {
+        label: 'Manuel Müdahale (W)',
+        data: new Array(STEPS).fill(null),
+        borderColor: '#ffb300', backgroundColor: 'rgba(255,174,0,0.55)',
+        pointRadius: 10, pointHoverRadius: 13, pointStyle: 'rectRot',
+        showLine: false, order: 0,
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: true,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#0b1320', borderColor: '#18293a', borderWidth: 1,
+        callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(0)} W` }
+      }
+    },
+    scales: {
+      x: { grid: { color: '#0f1e2e' }, ticks: { maxTicksLimit: 10, maxRotation: 0 } },
+      y: {
+        grid: { color: '#0f1e2e' },
+        ticks: { callback: v => v + ' W', maxTicksLimit: 6 },
+        suggestedMin: 0, suggestedMax: 5000,
+      }
+    }
+  },
+  plugins: [{
+    id: 'timeCursor',
+    afterDraw(chart) {
+      const { ctx, chartArea, scales } = chart;
+      const x = scales.x.getPixelForValue(chartCursorStep);
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath(); ctx.moveTo(x, chartArea.top); ctx.lineTo(x, chartArea.bottom); ctx.stroke();
+      // Current time label
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(x, chartArea.top, 34, 16);
+      ctx.fillStyle = '#fff';
+      ctx.font = '9px "JetBrains Mono"';
+      ctx.fillText(tlbls[chartCursorStep], x + 3, chartArea.top + 11);
+      ctx.restore();
+    }
+  }]
+});
+
+/* ──────────────────────────────────────────────
+   CLASSROOM CARD HTML OLUŞTURMA
+────────────────────────────────────────────── */
+function schedSegments(room) {
+  return SCHED[room].map(([s, e]) => {
+    const l = ((s-8)/9*100).toFixed(1), w = ((e-s)/9*100).toFixed(1);
+    return `<div class="sbar-seg" style="left:${l}%;width:${w}%"></div>`;
+  }).join('');
+}
+
+function buildCards() {
+  document.getElementById('clsGrid').innerHTML = ROOMS.map(room => `
+    <div class="cls-card" id="card-${room}">
+
+      <!-- HEADER -->
+      <div class="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div class="flex items-center gap-3">
+          <span class="font-mono font-bold text-lg text-white">${room}</span>
+          <span class="occ bos" id="occ-${room}">BOŞ</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <span class="font-mono text-xs text-slate-600" id="sched-lbl-${room}">—</span>
+          <button class="ovr-btn off" id="ovr-btn-${room}" onclick="toggleOverride('${room}')">
+            ⚙ MANUEL
+          </button>
+        </div>
+      </div>
+      <!-- OVERRIDE BANNER -->
+      <div id="ovr-banner-${room}" class="ovr-banner">
+        <span style="font-size:13px">⚠</span>
+        <span>Sistem Kullanıcı Kontrolünde — Akıllı Algoritma Devre Dışı</span>
+      </div>
+
+      <!-- SCHEDULE BAR -->
+      <div class="px-4 pt-2 pb-1">
+        <div class="sbar">${schedSegments(room)}<div class="sbar-now" id="sbar-${room}"></div></div>
+        <div class="flex justify-between font-mono text-xs text-slate-800 mt-1">
+          <span>08</span><span>10</span><span>12</span><span>14</span><span>16</span><span>17</span>
+        </div>
+      </div>
+
+      <!-- SENSORS GRID -->
+      <div class="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3">
+        <div>
+          <div class="font-mono text-xs text-slate-600 mb-0.5">T<sub>iç</sub> (Akıllı)</div>
+          <div class="sval text-info" id="s-temp-${room}">—</div>
+          <div class="font-mono text-xs text-slate-700">°C</div>
+        </div>
+        <div>
+          <div class="font-mono text-xs text-slate-600 mb-0.5">Toplam Işık</div>
+          <div class="sval text-warn" id="s-lux-${room}">—</div>
+          <div class="font-mono text-xs text-slate-700">lx</div>
+        </div>
+        <div>
+          <div class="font-mono text-xs text-slate-600 mb-0.5">CO₂ (Akıllı)</div>
+          <div class="sval" id="s-co2-${room}">—</div>
+          <div class="font-mono text-xs text-slate-700">ppm</div>
+        </div>
+        <div>
+          <div class="font-mono text-xs text-slate-600 mb-0.5">x<sub>ışık</sub> (katsayı)</div>
+          <div class="sval text-smart" id="s-x-${room}">—</div>
+          <div class="font-mono text-xs text-slate-700">[0 – 1]</div>
+        </div>
+      </div>
+
+      <!-- POWER COMPARISON -->
+      <div class="px-4 pb-3 border-t border-border pt-3 space-y-2">
+        <div class="flex justify-between items-center">
+          <span class="font-mono text-xs text-smart">⬤ Akıllı Sistem</span>
+          <span class="font-mono text-xs font-bold text-smart" id="pw-s-${room}">—</span>
+        </div>
+        <div class="bg-border rounded-full" style="height:5px">
+          <div class="pbar bg-smart" id="bar-s-${room}" style="width:0%"></div>
+        </div>
+
+        <div class="flex justify-between items-center pt-1">
+          <span class="font-mono text-xs text-trad">⬤ Geleneksel</span>
+          <span class="font-mono text-xs font-bold text-trad" id="pw-t-${room}">—</span>
+        </div>
+        <div class="bg-border rounded-full" style="height:5px">
+          <div class="pbar bg-trad" id="bar-t-${room}" style="width:0%"></div>
+        </div>
+
+        <div class="text-right font-mono text-xs">
+          <span class="text-slate-600">Tasarruf: </span>
+          <span class="font-bold text-smart" id="pw-sav-${room}">—</span>
+        </div>
+      </div>
+
+      <!-- CONSTRAINT BADGES -->
+      <div class="px-4 pb-3 grid grid-cols-2 gap-1.5 border-t border-border pt-3">
+        <div class="cbadge ok" id="cb-lux-${room}">◈ Aydınlatma</div>
+        <div class="cbadge ok" id="cb-tmp-${room}">◈ Isıl Konfor</div>
+        <div class="cbadge ok" id="cb-co2-${room}">◈ CO₂ Kalite</div>
+        <div class="cbadge ok" id="cb-cap-${room}">◈ Kapasite</div>
+      </div>
+
+      <!-- GRA TABLE -->
+      <div class="border-t border-border px-4 pt-3 pb-4">
+        <div class="font-mono text-xs text-slate-700 uppercase tracking-widest mb-2">
+          Gri İlişkisel Analiz
+        </div>
+
+      <!-- OVERRIDE CONTROL PANEL -->
+      <div class="ovr-panel" id="ovr-panel-${room}">
+        <div>
+          <div class="flex justify-between items-center font-mono text-xs mb-1.5">
+            <span style="color:#ffb300">💡 Işık Seviyesi</span>
+            <span id="ovr-lux-val-${room}" style="color:#ffb300;font-weight:700">%100</span>
+          </div>
+          <input type="range" class="ovr-range" id="ovr-lux-${room}"
+                 min="0" max="100" value="100"
+                 oninput="setOverrideLight('${room}', this.value)"/>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="font-mono text-xs" style="color:#ffb300">❄ Klima (Sabit 1200W)</span>
+          <button class="ovr-btn off" id="ovr-ac-btn-${room}"
+                  onclick="toggleOverrideAC('${room}')">AÇIK</button>
+        </div>
+        <div class="font-mono text-xs" style="color:#ff3d5a;letter-spacing:0.5px">
+          GRA algoritması devre dışı — tasarruf kaybı aşağıda görüntüleniyor
+        </div>
+      </div>
+        <table class="gra-tbl w-full">
+          <thead>
+            <tr class="text-slate-700">
+              <th class="text-left font-normal pb-1">Senaryo</th>
+              <th class="text-right font-normal">ξ₁</th>
+              <th class="text-right font-normal">ξ₂</th>
+              <th class="text-right font-normal">ξ₃</th>
+              <th class="text-right font-normal">G<sub>i</sub></th>
+            </tr>
+          </thead>
+          <tbody id="gra-${room}">
+            <tr><td colspan="5" class="text-center text-slate-700 py-2">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  `).join('');
+}
+
+/* ──────────────────────────────────────────────
+   MANUEL MÜDAHALEState
+────────────────────────────────────────────── */
+const overrideState = {};
+ROOMS.forEach(r => { overrideState[r] = { active: false, lightPct: 100, acOn: true }; });
+
+// Override durumundaki anlık enerji hesabı
+function getOverrideEnergy(room, step) {
+  const S   = preS[room][step];
+  const ovr = overrideState[room];
+  const x   = ovr.lightPct / 100;
+  const P_lmp = x * P_LAMP * N_LAMPS;
+  const P_ac  = ovr.acOn && S.u ? 1200 : 0;
+  const lux   = S.Enat + x * K_LUX * N_LAMPS;
+  // Klima tam güç → overcool riski: sıcaklık sınırın dışına çıkabilir
+  const Tic   = S.u && ovr.acOn ? 19.5 : S.Tic;
+  return { total: P_lmp + P_ac, P_lmp, P_ac, lux, x, u: S.u, Tic, Enat: S.Enat };
+}
+
+// Override GRA (algoritma devre dışı — düşmüş skorlar)
+function overrideGRA(room, step) {
+  const oE  = getOverrideEnergy(room, step);
+  const T   = preT[room][step];
+  // xi1: geleneksel kadar veya daha fazla enerji → sıfır veya negatif tasarruf
+  const xi1 = T.total > 0 ? Math.max(0, 1 - oE.total / T.total) : 0;
+  // xi2: ışık konforu (manuel seviyeye göre)
+  const xi2 = oE.u ? Math.min(1, oE.lux / LUX_MIN) : 1;
+  // xi3: klima tam güçte → overcool → sıcaklık kısıt dışı
+  const xi3 = oE.u && overrideState[room].acOn ? 0.52 : 0.90;
+  return { xi1, xi2, xi3, G: (xi1 + xi2 + xi3) / 3 };
+}
+
+function toggleOverride(room) {
+  const ovr = overrideState[room];
+  ovr.active = !ovr.active;
+
+  // Buton + banner + panel
+  const btn = el(`ovr-btn-${room}`);
+  btn.className = `ovr-btn ${ovr.active ? 'on' : 'off'}`;
+  btn.textContent = ovr.active ? '✕ MANUEL KAPAT' : '⚙ MANUEL';
+
+  el(`ovr-banner-${room}`).classList.toggle('show', ovr.active);
+  el(`ovr-panel-${room}`).classList.toggle('active', ovr.active);
+
+  // Kart rengi: override > violation öncelikli
+  const card = el(`card-${room}`);
+  card.classList.toggle('override', ovr.active);
+  if (ovr.active) card.classList.remove('violation');
+
+  updateAll(curStep);
+}
+
+function setOverrideLight(room, val) {
+  overrideState[room].lightPct = +val;
+  el(`ovr-lux-val-${room}`).textContent = `%${val}`;
+  updateAll(curStep);
+}
+
+function toggleOverrideAC(room) {
+  const ovr = overrideState[room];
+  ovr.acOn = !ovr.acOn;
+  const btn = el(`ovr-ac-btn-${room}`);
+  btn.textContent = ovr.acOn ? 'AÇIK' : 'KAPALI';
+  btn.className   = `ovr-btn ${ovr.acOn ? 'off' : 'on'}`;
+  updateAll(curStep);
+}
+
+/* ──────────────────────────────────────────────
+   DOM GÜNCELLEMESİ
+────────────────────────────────────────────── */
+function el(id) { return document.getElementById(id); }
+
+function setBadge(id, ok, label) {
+  const e = el(id); if (!e) return;
+  e.className = `cbadge ${ok ? 'ok' : 'bad'}`;
+  e.textContent = `◈ ${label} ${ok ? '✓' : '✗'}`;
+}
+
+function updateAll(step) {
+  const t = 8 + step * 0.25;
+  const h = Math.floor(t), m = Math.round((t - h) * 60);
+  el('timDisp').textContent = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+
+  // Ana grafik imleci
+  chartCursorStep = step;
+  mainChart.update('none');
+
+  const alerts = [];
+
+  ROOMS.forEach(room => {
+    const S   = preS[room][step];
+    const T   = preT[room][step];
+    const ovr = overrideState[room];
+
+    // Etkin veri: override aktifse override enerjisi, değilse akıllı sistem
+    const E = ovr.active ? getOverrideEnergy(room, step) : S;
+
+    // Doluluk
+    const occEl = el(`occ-${room}`);
+    occEl.textContent = S.u ? 'DOLU' : 'BOŞ';
+    occEl.className = `occ ${S.u ? 'dolu' : 'bos'}`;
+
+    // Ders yazısı
+    let schedTxt = 'Ders yok';
+    for (const [s, e] of SCHED[room]) {
+      if (t >= s && t < e) { schedTxt = `${String(s).padStart(2,'0')}:00–${String(e).padStart(2,'0')}:00`; break; }
+    }
+    el(`sched-lbl-${room}`).textContent = schedTxt;
+
+    // Takvim çubuğu imleci
+    el(`sbar-${room}`).style.left = `${((t-8)/9*100).toFixed(1)}%`;
+
+    // Sensörler — override aktifse turuncu vurgula
+    const co2El = el(`s-co2-${room}`);
+    co2El.textContent = S.co2.toFixed(0);
+    co2El.style.color = S.co2 > 1000 ? '#ff3d5a' : S.co2 > 850 ? '#ffb300' : '#c8d8e8';
+
+    const tempEl = el(`s-temp-${room}`);
+    const dispTemp = ovr.active ? E.Tic : S.Tic;
+    tempEl.textContent = dispTemp.toFixed(1);
+    tempEl.style.color = ovr.active ? '#ffb300'
+      : (S.u && (S.Tic < T_MIN || S.Tic > T_MAX)) ? '#ff3d5a' : '#38b4ff';
+
+    el(`s-lux-${room}`).textContent = E.lux.toFixed(0);
+    el(`s-x-${room}`).textContent   = E.x.toFixed(2);
+
+    // Güç barları — override rengi: turuncu
+    const MAX_REF = 2500;
+    const smartLabel = el(`pw-s-${room}`);
+    smartLabel.textContent  = `${E.total.toFixed(0)} W`;
+    smartLabel.style.color  = ovr.active ? '#ffb300' : '';
+    el(`pw-t-${room}`).textContent  = `${T.total.toFixed(0)} W`;
+    const barSEl = el(`bar-s-${room}`);
+    barSEl.style.width       = `${Math.min(100, E.total/MAX_REF*100).toFixed(1)}%`;
+    barSEl.style.background  = ovr.active ? '#ffb300' : '';
+    el(`bar-t-${room}`).style.width  = `${Math.min(100, T.total/MAX_REF*100).toFixed(1)}%`;
+
+    const sav = T.total > 0 ? (1 - E.total/T.total)*100 : 0;
+    const savEl = el(`pw-sav-${room}`);
+    savEl.textContent  = sav > 0 ? `%${sav.toFixed(0)}` : sav < 0 ? `%${sav.toFixed(0)} ↑` : '—';
+    savEl.style.color  = ovr.active ? '#ff3d5a' : '';
+
+    // Kısıtlar
+    const lux_ok = !E.u || E.lux >= LUX_MIN;
+    const thm_ok = !E.u || (dispTemp >= T_MIN && dispTemp <= T_MAX);
+    const co2_ok = S.co2 <= CO2_MAX;
+    const cap_ok = E.x >= 0 && E.x <= 1;
+
+    setBadge(`cb-lux-${room}`, lux_ok,  'Aydınlatma');
+    setBadge(`cb-tmp-${room}`, thm_ok,  'Isıl Konfor');
+    setBadge(`cb-co2-${room}`, co2_ok,  'CO₂ Kalite');
+    setBadge(`cb-cap-${room}`, cap_ok,  'Kapasite');
+
+    // Kart durumu (override, violation veya normal)
+    if (!ovr.active) {
+      const hasViol = !lux_ok || !thm_ok || !co2_ok;
+      el(`card-${room}`).classList.toggle('violation', hasViol);
+      el(`card-${room}`).classList.remove('override');
+    }
+
+    // Geleneksel sistem ihlalleri → alert banner
+    if (T.u) {
+      const t_thm = T.Tic >= T_MIN && T.Tic <= T_MAX;
+      const t_co2 = T.co2 <= CO2_MAX;
+      if (!t_thm) alerts.push(`${room} Isıl İhlal: ${T.Tic.toFixed(1)}°C`);
+      if (!t_co2) alerts.push(`${room} CO₂ İhlal: ${T.co2.toFixed(0)} ppm`);
+    }
+
+    // GRA tablosu — override aktifse düşmüş skorları göster
+    if (ovr.active) {
+      const og = overrideGRA(room, step);
+      const ag = graAnalysis(room, t);
+      el(`gra-${room}`).innerHTML = `
+        <tr class="ovr-row">
+          <td class="font-ui text-xs">⚠ Manuel Kontrol (Aktif)</td>
+          <td class="text-right">${og.xi1.toFixed(3)}</td>
+          <td class="text-right">${og.xi2.toFixed(3)}</td>
+          <td class="text-right">${og.xi3.toFixed(3)}</td>
+          <td class="text-right">${og.G.toFixed(3)}</td>
+        </tr>
+        ${ag.map(r => `
+          <tr class="ovr-dim">
+            <td class="font-ui text-xs">${r.lbl}</td>
+            <td class="text-right">${r.xi1.toFixed(3)}</td>
+            <td class="text-right">${r.xi2.toFixed(3)}</td>
+            <td class="text-right">${r.xi3.toFixed(3)}</td>
+            <td class="text-right">${r.G.toFixed(3)}</td>
+          </tr>`).join('')}
+      `;
+    } else {
+      const gra = graAnalysis(room, t);
+      el(`gra-${room}`).innerHTML = gra.map(r => `
+        <tr class="${r.opt ? 'opt-row' : 'text-slate-600'}">
+          <td class="font-ui text-xs">${r.lbl}${r.opt ? ' ★' : ''}</td>
+          <td class="text-right">${r.xi1.toFixed(3)}</td>
+          <td class="text-right">${r.xi2.toFixed(3)}</td>
+          <td class="text-right">${r.xi3.toFixed(3)}</td>
+          <td class="text-right font-bold">${r.G.toFixed(3)}</td>
+        </tr>
+      `).join('');
+    }
+  });
+
+  // Özet panel — override varsa etkin enerji kullan
+  const anyOverride = ROOMS.some(r => overrideState[r].active);
+  const totS_actual = ROOMS.reduce((s, r) =>
+    s + (overrideState[r].active ? getOverrideEnergy(r, step).total : preS[r][step].total), 0);
+  const totT = ROOMS.reduce((s, r) => s + preT[r][step].total, 0);
+  const pct  = totT > 0 ? Math.max(0, (1 - totS_actual/totT) * 100) : 0;
+
+  const pctEl = el('ov-pct');
+  pctEl.textContent  = `%${pct.toFixed(0)}`;
+  pctEl.style.color  = anyOverride ? '#ffb300' : '';
+
+  el('ov-smart').textContent = totS_actual.toFixed(0);
+  el('ov-smart').style.color = anyOverride ? '#ffb300' : '';
+  el('ov-trad').textContent  = totT.toFixed(0);
+  el('ov-viol').textContent  = alerts.length;
+
+  // Ana grafik — override noktası (turuncu diamond)
+  const ovrDataset = mainChart.data.datasets[2];
+  ovrDataset.data = new Array(STEPS).fill(null);
+  if (anyOverride) ovrDataset.data[step] = totS_actual;
+  mainChart.update('none');
+
+  // Alert banner — override + kısıt ihlallerini birleştir
+  const ovrRooms = ROOMS.filter(r => overrideState[r].active);
+  if (ovrRooms.length) alerts.unshift(`⚙ Manuel müdahale aktif: ${ovrRooms.join(', ')}`);
+
+  const bar = el('alert-bar');
+  if (alerts.length) {
+    bar.classList.add('on');
+    el('alert-text').textContent = alerts.join('  |  ');
+  } else {
+    bar.classList.remove('on');
+  }
+}
+
+/* ──────────────────────────────────────────────
+   ZAMAN KONTROLÜ
+────────────────────────────────────────────── */
+let curStep  = 0;
+let playing  = false;
+let speed    = 1;
+let timer    = null;
+
+function onSlider(v) { curStep = +v; updateAll(curStep); }
+
+function togglePlay() {
+  playing = !playing;
+  el('playBtn').textContent = playing ? '⏸' : '▶';
+  playing ? startTimer() : stopTimer();
+}
+
+function startTimer() {
+  timer = setInterval(() => {
+    if (curStep >= STEPS - 1) { playing = false; el('playBtn').textContent = '▶'; stopTimer(); return; }
+    curStep++;
+    el('timeSlider').value = curStep;
+    updateAll(curStep);
+  }, 1000 / speed);
+}
+
+function stopTimer() { clearInterval(timer); timer = null; }
+
+function setSpeed(s) {
+  speed = s;
+  document.querySelectorAll('.spd').forEach(b => {
+    const a = +b.dataset.speed === s;
+    b.classList.toggle('active', a);
+  });
+  if (playing) { stopTimer(); startTimer(); }
+}
+
+/* ──────────────────────────────────────────────
+   BAŞLATMA
+────────────────────────────────────────────── */
+buildCards();
+setSpeed(1);
+updateAll(0);
+</script>
+</body>
+</html>
