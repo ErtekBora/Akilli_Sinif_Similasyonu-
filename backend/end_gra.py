@@ -99,11 +99,14 @@ def simulate_scenario(records, isik_esigi, ac_setpoint, co2_limiti):
     Gerçek sensör verilerini alır, farklı parametre setleri
     (ışık eşiği, AC ayarı, CO₂ limiti) ile ne olurdu diye hesaplar.
 
+    v2: num_students (kişi sayısı) artık kayıtlardan okunur.
+    CO₂ birikimi ve HVAC gücü gerçek kişi sayısına göre ölçeklenir.
+
     Döndürdüğü değerler:
-        enerji_ort : Watt cinsinden ortalama güç tüketimi
-        lux_ort    : Ortalama ışık seviyesi
+        enerji_ort  : Watt cinsinden ortalama güç tüketimi
+        lux_ort     : Ortalama ışık seviyesi
         sicaklik_ort: Ortalama iç sıcaklık
-        co2_ort    : Ortalama CO₂
+        co2_ort     : Ortalama CO₂
     """
     if not records:
         return None
@@ -114,11 +117,16 @@ def simulate_scenario(records, isik_esigi, ac_setpoint, co2_limiti):
     toplam_co2    = 0
     sayac         = 0
 
+    # Fiziksel sabitler (EEM simulator ile tutarlı)
+    CO2_RATE_PER_PERSON = 0.35   # ppm / dak / kişi
+    P_AC_KİŞİ           = 5.0    # W / kişi
+
     for rec in records:
-        u    = rec.get("occupancy_u", 0)
-        Enat = rec.get("light_natural_lux_E", 0)
-        Tout = rec.get("temperature_outdoor", 25)
-        co2  = rec.get("co2_ppm", 400)
+        u            = rec.get("occupancy_u", 0)
+        num_students = rec.get("num_students", 0)  # ← YENİ: gerçek kişi sayısı
+        Enat         = rec.get("light_natural_lux_E", 0)
+        Tout         = rec.get("temperature_outdoor", 25)
+        co2          = rec.get("co2_ppm", 400)
 
         if u == 0:
             # Boş sınıf — tüm cihazlar kapalı
@@ -130,19 +138,21 @@ def simulate_scenario(records, isik_esigi, ac_setpoint, co2_limiti):
             # Dolu sınıf — bu senaryonun parametrelerine göre çalıştır
 
             # Işık: isik_esigi lüks'e kadar doğal ışık yeterliyse lambayı kıs
-            x = max(0.0, min(1.0, (isik_esigi - Enat) / 500.0))
-            P_lamba = x * 40 * 2   # 2 lamba × 40W
-            lux = Enat + x * 500   # x * k * N = x * 250 * 2
+            x       = max(0.0, min(1.0, (isik_esigi - Enat) / 500.0))
+            P_lamba = x * 40 * 2    # 2 lamba × 40W
+            lux     = Enat + x * 500
 
-            # Klima: setpoint'e göre güç
-            fark = abs(Tout - ac_setpoint)
-            P_klima = min(900, 300 + 50 * fark)
+            # Klima: setpoint + kişi sayısına göre artan metabolik yük
+            fark_dis = abs(Tout - ac_setpoint)
+            P_klima  = min(2000, 300 + 50 * fark_dis + P_AC_KİŞİ * num_students)
 
-            # CO₂: limiti aşınca havalandırma devreye giriyor
-            # (co2_limiti düşükse daha sık havalandırma = daha az CO₂)
-            co2_artis = 3.0 if co2_limiti <= 800 else (4.0 if co2_limiti <= 1000 else 5.0)
-            # Basit model: yüksek limitli sistem daha yüksek CO₂'ye izin verir
-            co2_sim = min(co2_limiti, co2 * (co2_artis / 3.5))
+            # CO₂: kişi sayısına göre ölçeklenen birikim oranı.
+            # co2_limiti → havalandırma eşiği: düşükse sistem daha erken devreye girer,
+            # dolayısıyla CO₂ o limite yakın sabitlenir.
+            co2_rate = num_students * CO2_RATE_PER_PERSON   # ppm / dak
+            # Senaryo limiti aşılırsa havalandırma müdahale eder → CO₂ limite çekilir
+            # Limitin altında kalınırsa serbest birikim devam eder.
+            co2_sim = min(co2_limiti, 400 + co2_rate * 90)
 
             toplam_enerji += P_lamba + P_klima
             toplam_lux    += lux
