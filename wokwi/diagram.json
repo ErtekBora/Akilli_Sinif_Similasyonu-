@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "author": "Akilli Sinif Simulasyonu",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "board-esp32-devkit-c-v4",
+      "id": "esp",
+      "top": 9.6,
+      "left": -129.56,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-dht22",
+      "id": "dht1",
+      "top": -76.5,
+      "left": 23.4,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led1",
+      "top": -70.8,
+      "left": -101.8,
+      "attrs": {
+        "color": "red"
+      }
+    },
+    {
+      "type": "wokwi-photoresistor-sensor",
+      "id": "ldr1",
+      "top": -54.4,
+      "left": 144.8,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot1",
+      "top": 123.5,
+      "left": 19,
+      "attrs": {
+        "min": "0",
+        "max": "1023",
+        "step": "1"
+      }
+    },
+    {
+      "type": "wokwi-pir-motion-sensor",
+      "id": "pir1",
+      "top": 119.2,
+      "left": 146.22,
+      "attrs": {}
+    }
+  ],
+  "connections": [
+    ["esp:3V3", "dht1:VCC", "red", []],
+    ["esp:GND.1", "dht1:GND", "black", []],
+    ["esp:15", "dht1:SDA", "green", []],
+
+    ["esp:2", "led1:A", "green", []],
+    ["esp:GND.1", "led1:C", "black", []],
+
+    ["esp:3V3", "ldr1:VCC", "red", []],
+    ["esp:GND.1", "ldr1:GND", "black", []],
+    ["esp:34", "ldr1:AO", "green", []],
+
+    ["esp:3V3", "pot1:VCC", "red", []],
+    ["esp:GND.1", "pot1:GND", "black", []],
+    ["esp:35", "pot1:SIG", "green", []],
+
+    ["esp:5V", "pir1:VCC", "red", []],
+    ["esp:GND.1", "pir1:GND", "black", []],
+    ["esp:12", "pir1:OUT", "green", []]
+  ],
+  "dependencies": {}
+}

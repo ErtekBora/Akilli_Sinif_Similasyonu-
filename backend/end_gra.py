@@ -31,6 +31,7 @@ from datetime import datetime
 
 API_BASE   = "http://localhost:8000"
 CLASSROOMS = ["B-201", "B-202", "B-203"]
+DEFAULT_TEMP_TOLERANCE_C = 0.5
 
 # ═══════════════════════════════════════════════════════
 #   TAGUCHİ L9 DENEY MATRİSİ
@@ -128,6 +129,8 @@ def simulate_scenario(records, isik_esigi, ac_setpoint, co2_limiti):
         Tout         = rec.get("temperature_outdoor", 25)
         co2          = rec.get("co2_ppm", 400)
 
+        temp_tolerance = rec.get("temp_tolerance_c", DEFAULT_TEMP_TOLERANCE_C)
+
         if u == 0:
             # Boş sınıf — tüm cihazlar kapalı
             toplam_enerji += 0
@@ -142,9 +145,16 @@ def simulate_scenario(records, isik_esigi, ac_setpoint, co2_limiti):
             P_lamba = x * 40 * 2    # 2 lamba × 40W
             lux     = Enat + x * 500
 
-            # Klima: setpoint + kişi sayısına göre artan metabolik yük
+            # Klima: setpoint + kişi sayısına göre artan metabolik yük.
+            # DHT22 ±0.5°C toleransı ölü bant kabul edilir; bu bant içinde
+            # HVAC kapalı kalır ve setpoint çevresinde hunting yapmaz.
             fark_dis = abs(Tout - ac_setpoint)
-            P_klima  = min(2000, 300 + 50 * fark_dis + P_AC_KİŞİ * num_students)
+            measured_temp = rec.get("temperature_indoor", ac_setpoint)
+            hvac_active = abs(measured_temp - ac_setpoint) > temp_tolerance
+            P_klima = (
+                min(2000, 300 + 50 * fark_dis + P_AC_KİŞİ * num_students)
+                if hvac_active else 0
+            )
 
             # CO₂: kişi sayısına göre ölçeklenen birikim oranı.
             # co2_limiti → havalandırma eşiği: düşükse sistem daha erken devreye girer,
@@ -156,7 +166,10 @@ def simulate_scenario(records, isik_esigi, ac_setpoint, co2_limiti):
 
             toplam_enerji += P_lamba + P_klima
             toplam_lux    += lux
-            toplam_sicak  += ac_setpoint + (Tout - ac_setpoint) * 0.03
+            if hvac_active:
+                toplam_sicak += ac_setpoint + (Tout - ac_setpoint) * 0.03
+            else:
+                toplam_sicak += measured_temp
             toplam_co2    += co2_sim
 
         sayac += 1
@@ -236,8 +249,8 @@ def hesapla_gra(sonuclar):
     # Normalize (enerji: küçük iyi, lüks: büyük iyi, sıcaklık: 22'ye yakın iyi)
     norm_enerji  = normalize(enerjiler,   kucuk_iyi=True)
     norm_lux     = normalize(luxlar,      kucuk_iyi=False)
-    # Sıcaklık için 22°C'ye yakınlık → farkı küçük olan iyi
-    farklar      = [abs(t - 22) for t in sicakliklar]
+    # Sıcaklık için 22°C'ye yakınlık → DHT22 tolerans bandı içi eşdeğer iyi
+    farklar      = [max(0.0, abs(t - 22) - DEFAULT_TEMP_TOLERANCE_C) for t in sicakliklar]
     norm_sicaklik= normalize(farklar,     kucuk_iyi=True)
 
     sonuc = []

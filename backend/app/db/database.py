@@ -4,6 +4,15 @@ import os
 DB_PATH = os.path.join(os.path.dirname(__file__), "../../classroom.db")
 
 
+async def _ensure_columns(db: aiosqlite.Connection, table: str, columns: dict[str, str]):
+    """Var olan SQLite tablolarını yeni sensör alanlarıyla geriye dönük genişletir."""
+    existing = await db.execute_fetchall(f"PRAGMA table_info({table})")
+    existing_names = {row[1] for row in existing}
+    for name, definition in columns.items():
+        if name not in existing_names:
+            await db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
+
+
 async def get_db():
     """Her request için veritabanı bağlantısı döner."""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -25,14 +34,21 @@ async def init_db():
                 timestamp           DATETIME NOT NULL,
                 classroom_id        TEXT     NOT NULL,
                 occupancy_u         INTEGER  NOT NULL CHECK (occupancy_u IN (0,1)),
+                num_students        INTEGER  NOT NULL DEFAULT 0,
                 temperature_indoor  REAL     NOT NULL,
+                temperature_raw     REAL,
                 temperature_outdoor REAL     NOT NULL,
+                humidity_percent    REAL,
                 light_natural_lux_E REAL     NOT NULL,
                 co2_ppm             INTEGER  NOT NULL,
                 ac_setpoint_temp    REAL     NOT NULL,
                 ac_power_w          REAL     NOT NULL,
+                metabolic_load_w    REAL     NOT NULL DEFAULT 0,
                 total_light_lux     REAL     NOT NULL,
                 total_energy_w      REAL     NOT NULL,
+                temp_tolerance_c    REAL     NOT NULL DEFAULT 0.5,
+                humidity_tolerance_percent REAL NOT NULL DEFAULT 2.0,
+                capture_interval_ms INTEGER  NOT NULL DEFAULT 5000,
                 lighting_ok         INTEGER  NOT NULL CHECK (lighting_ok  IN (0,1)),
                 thermal_ok          INTEGER  NOT NULL CHECK (thermal_ok   IN (0,1)),
                 co2_ok              INTEGER  NOT NULL CHECK (co2_ok       IN (0,1)),
@@ -71,4 +87,13 @@ async def init_db():
             CREATE INDEX IF NOT EXISTS idx_optim_classroom  ON optimization_results(classroom_id);
             CREATE INDEX IF NOT EXISTS idx_light_log_id     ON light_device_logs(log_id);
         """)
+        await _ensure_columns(db, "sensor_logs", {
+            "num_students": "INTEGER NOT NULL DEFAULT 0",
+            "temperature_raw": "REAL",
+            "humidity_percent": "REAL",
+            "metabolic_load_w": "REAL NOT NULL DEFAULT 0",
+            "temp_tolerance_c": "REAL NOT NULL DEFAULT 0.5",
+            "humidity_tolerance_percent": "REAL NOT NULL DEFAULT 2.0",
+            "capture_interval_ms": "INTEGER NOT NULL DEFAULT 5000",
+        })
         await db.commit()
