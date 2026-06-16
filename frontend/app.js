@@ -4,6 +4,7 @@ const CLASSROOMS    = ["B-201", "B-202", "B-203"];
 let   activeClassroom = "B-201";   // aktif sekme
 const POLL_INTERVAL = 5000;
 const MAX_POINTS    = 40;
+const latestTimestamps = {};
 
 /* ── CLASSROOM SCHEDULES (for timeline) ──────────────────────────── */
 const SCHEDULES = {
@@ -119,6 +120,7 @@ function switchClassroom(id) {
   });
 
   // Yeni sınıfın verisini hemen çek
+  fetchHistory();
   fetchSummary();
   fetchScenarios();
   fetchLatest();
@@ -178,6 +180,8 @@ async function fetchLatest() {
     const res = await fetch(`${API_BASE}/api/data/latest?classroom_id=${activeClassroom}`);
     if (!res.ok) throw new Error("HTTP " + res.status);
     const d = await res.json();
+    const isNewSample = latestTimestamps[activeClassroom] !== d.timestamp;
+    latestTimestamps[activeClassroom] = d.timestamp;
 
     setLiveStatus("live");
     setText("lastUpdate", formatTime(d.timestamp));
@@ -188,7 +192,19 @@ async function fetchLatest() {
 
     const temp = d.temperature_indoor;
     setText("kpiTemp", temp.toFixed(1));
-    setKpiCard("card-temp", (temp >= 20 && temp <= 24) ? "ok" : "bad");
+    const tempTolerance = d.temp_tolerance_c ?? 0.5;
+    const tempOk = temp >= (20 + tempTolerance) && temp <= (24 - tempTolerance);
+    setKpiCard("card-temp", tempOk ? "ok" : "bad");
+    const rawTemp = d.temperature_raw ?? temp;
+    const humidity = d.humidity_percent;
+    setText(
+      "kpiTempSub",
+      `Ham: ${rawTemp.toFixed(1)} °C · ±${tempTolerance.toFixed(1)} °C` +
+        (humidity != null ? ` · Nem: %${humidity.toFixed(1)}` : "")
+    );
+    if (d.capture_interval_ms) {
+      setText("captureInterval", `${(d.capture_interval_ms / 1000).toFixed(0)} sn`);
+    }
 
     setText("kpiLux", d.total_light_lux.toFixed(0));
     setKpiCard("card-lux", d.lighting_ok ? "ok" : "bad");
@@ -208,11 +224,13 @@ async function fetchLatest() {
 
     renderLights(d.lights || [], d.ac_power_w);
 
-    const t = formatTime(d.timestamp);
-    pushToChart(charts.energy, t, energy);
-    pushToChart(charts.lux,    t, d.total_light_lux);
-    pushToChart(charts.temp,   t, temp);
-    pushToChart(charts.co2,    t, co2);
+    if (isNewSample) {
+      const t = formatTime(d.timestamp);
+      pushToChart(charts.energy, t, energy);
+      pushToChart(charts.lux,    t, d.total_light_lux);
+      pushToChart(charts.temp,   t, temp);
+      pushToChart(charts.co2,    t, co2);
+    }
 
   } catch (err) {
     setLiveStatus("error");
@@ -311,6 +329,7 @@ async function fetchHistory() {
     const res = await fetch(`${API_BASE}/api/data/history?classroom_id=${activeClassroom}&limit=${MAX_POINTS}`);
     if (!res.ok) return;
     const rows = await res.json();
+    latestTimestamps[activeClassroom] = rows.length ? rows[0].timestamp : undefined;
     [...rows].reverse().forEach(d => {
       const t = formatTime(d.timestamp);
       pushToChart(charts.energy, t, d.total_energy_w);
@@ -353,6 +372,7 @@ function renderTimeline() {
 async function init() {
   setLiveStatus("connecting");
   renderTimeline();           // static — draw immediately
+  await fetchHistory();
   await fetchSummary();
   await fetchScenarios();
   await fetchLatest();
