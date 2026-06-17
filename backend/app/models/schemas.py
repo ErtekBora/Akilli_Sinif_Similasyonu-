@@ -15,6 +15,7 @@ class LightDevice(BaseModel):
 class ACDevice(BaseModel):
     setpoint_temp_Tset: float   # T_set,t
     power_w_Pj: float           # P_j(T_set,t)
+    metabolic_load_w: float = 0.0
 
 
 # ── Cihaz Durumu ───────────────────────────────────────────────────────────
@@ -26,10 +27,16 @@ class DeviceStatus(BaseModel):
 # ── Sensör Verisi ──────────────────────────────────────────────────────────
 class SensorData(BaseModel):
     occupancy_u: int = Field(ge=0, le=1)     # u_t ∈ {0,1}
+    num_students: int = Field(default=0, ge=0)
     temperature_indoor: float                 # T_indoor,t
+    temperature_raw: float | None = None      # filtresiz DHT22 okuması
     temperature_outdoor: float                # dış sıcaklık
+    humidity_percent: float | None = Field(default=None, ge=0, le=100)
     light_natural_lux_E: float = Field(ge=0) # E_natural,t
     co2_ppm: int = Field(ge=0)               # CO2,t
+    temp_tolerance_c: float = Field(default=0.5, ge=0)
+    humidity_tolerance_percent: float = Field(default=2.0, ge=0)
+    capture_interval_ms: int = Field(default=5000, ge=1)
 
 
 # ── Hesaplanan Metrikler ───────────────────────────────────────────────────
@@ -107,14 +114,21 @@ class SensorLogResponse(BaseModel):
     timestamp: str
     classroom_id: str
     occupancy_u: int
+    num_students: int = 0
     temperature_indoor: float
+    temperature_raw: float | None = None
     temperature_outdoor: float
+    humidity_percent: float | None = None
     light_natural_lux_E: float
     co2_ppm: int
     ac_setpoint_temp: float
     ac_power_w: float
+    metabolic_load_w: float = 0.0
     total_light_lux: float
     total_energy_w: float
+    temp_tolerance_c: float = 0.5
+    humidity_tolerance_percent: float = 2.0
+    capture_interval_ms: int = 5000
     lighting_ok: bool
     thermal_ok: bool
     co2_ok: bool

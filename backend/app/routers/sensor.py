@@ -28,25 +28,35 @@ async def receive_sensor_data(
         """
         INSERT INTO sensor_logs (
             timestamp, classroom_id,
-            occupancy_u, temperature_indoor, temperature_outdoor,
+            occupancy_u, num_students,
+            temperature_indoor, temperature_raw, temperature_outdoor,
+            humidity_percent,
             light_natural_lux_E, co2_ppm,
-            ac_setpoint_temp, ac_power_w,
+            ac_setpoint_temp, ac_power_w, metabolic_load_w,
             total_light_lux, total_energy_w,
+            temp_tolerance_c, humidity_tolerance_percent, capture_interval_ms,
             lighting_ok, thermal_ok, co2_ok, capacity_ok
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """,
         (
             payload.timestamp.isoformat(),
             payload.classroom_id,
             s.occupancy_u,
+            s.num_students,
             s.temperature_indoor,
+            s.temperature_raw if s.temperature_raw is not None else s.temperature_indoor,
             s.temperature_outdoor,
+            s.humidity_percent,
             s.light_natural_lux_E,
             s.co2_ppm,
             d.ac.setpoint_temp_Tset,
             d.ac.power_w_Pj,
+            d.ac.metabolic_load_w,
             m.total_light_lux,
             m.total_energy_w,
+            s.temp_tolerance_c,
+            s.humidity_tolerance_percent,
+            s.capture_interval_ms,
             int(c.lighting_ok),
             int(c.thermal_ok),
             int(c.co2_ok),
